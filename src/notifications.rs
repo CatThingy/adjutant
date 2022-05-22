@@ -1,0 +1,85 @@
+use std::collections::HashMap;
+
+use zbus::dbus_interface;
+
+#[derive(Debug)]
+struct Notification {
+    pub app_name: String,
+    pub summary: String,
+    pub expire_timeout: i32,
+    pub timer: u32,
+}
+
+#[derive(Debug)]
+pub struct Notifications {
+    notifications: HashMap<u32, Notification>,
+    next_id: u32,
+}
+
+impl Notifications {
+    pub fn new() -> Notifications {
+        Notifications {
+            notifications: HashMap::new(),
+            next_id: 1,
+        }
+    }
+}
+
+#[dbus_interface(interface = "org.freedesktop.Notifications")]
+impl Notifications {
+    /// CloseNotification method
+    async fn close_notification(&mut self, id: u32) {
+        self.notifications.remove(&id);
+    }
+
+    /// GetCapabilities method
+    async fn get_capabilities(&self) -> Vec<String> {
+        vec![]
+    }
+
+    /// GetServerInformation method
+    async fn get_server_information(&self) -> (&str, &str, &str, &str) {
+        ("notext", "CatThingy", "0.1.0", "1.2")
+    }
+
+    /// Notify method
+    async fn notify(
+        &mut self,
+        app_name: &str,
+        replaces_id: u32,
+        _app_icon: &str,
+        summary: &str,
+        _body: &str,
+        _actions: Vec<&str>,
+        _hints: std::collections::HashMap<&str, zbus::zvariant::Value<'_>>,
+        expire_timeout: i32,
+    ) -> u32 {
+        let new_id = if replaces_id == 0 {
+            self.next_id
+        } else {
+            replaces_id
+        };
+
+        self.notifications.insert(
+            new_id,
+            Notification {
+                app_name: app_name.to_string(),
+                summary: summary.to_string(),
+                expire_timeout,
+                timer: 0,
+            },
+        );
+
+        dbg!(&self.notifications);
+
+        new_id
+    }
+
+    // /// ActionInvoked signal
+    // #[dbus_interface(signal)]
+    // async fn action_invoked(&self, id: u32, activation_token: &str) {}
+
+    // /// NotificationClosed signal
+    // #[dbus_interface(signal)]
+    // async fn notification_closed(&self, id: u32, reason: u32) {}
+}
