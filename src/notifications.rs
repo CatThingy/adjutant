@@ -1,9 +1,10 @@
 use std::collections::HashMap;
 
+use async_std::sync::{Arc, RwLock};
 use zbus::dbus_interface;
 
-#[derive(Debug)]
-struct Notification {
+#[derive(Debug, Clone)]
+pub struct Notification {
     pub app_name: String,
     pub summary: String,
     pub expire_timeout: i32,
@@ -11,25 +12,31 @@ struct Notification {
 }
 
 #[derive(Debug)]
-pub struct Notifications {
-    notifications: HashMap<u32, Notification>,
+pub struct NotificationHandler {
+    pub notifications: Arc<RwLock<Vec<(u32, Notification)>>>,
     next_id: u32,
 }
 
-impl Notifications {
-    pub fn new() -> Notifications {
-        Notifications {
-            notifications: HashMap::new(),
+impl NotificationHandler {
+    pub fn new() -> NotificationHandler {
+        NotificationHandler {
+            notifications: Arc::new(RwLock::<Vec<(u32, Notification)>>::new(vec![])),
             next_id: 1,
         }
     }
 }
 
 #[dbus_interface(interface = "org.freedesktop.Notifications")]
-impl Notifications {
+impl NotificationHandler {
     /// CloseNotification method
     async fn close_notification(&mut self, id: u32) {
-        self.notifications.remove(&id);
+        let mut notifications = self.notifications.write().await;
+        if let Some(index) = notifications
+            .iter()
+            .position(|(notif_id, _)| notif_id == &id)
+        {
+            notifications.remove(index);
+        }
     }
 
     /// GetCapabilities method
@@ -51,26 +58,57 @@ impl Notifications {
         summary: &str,
         _body: &str,
         _actions: Vec<&str>,
-        _hints: std::collections::HashMap<&str, zbus::zvariant::Value<'_>>,
+        _hints: HashMap<&str, zbus::zvariant::Value<'_>>,
         expire_timeout: i32,
     ) -> u32 {
+        dbg!(
+            app_name,
+            replaces_id,
+            _app_icon,
+            summary,
+            _body,
+            _actions,
+            _hints,
+            expire_timeout
+        );
+
         let new_id = if replaces_id == 0 {
-            self.next_id
+            let next_id = self.next_id;
+            self.next_id = u32::wrapping_add(next_id, 1);
+
+            next_id
         } else {
             replaces_id
         };
 
-        self.notifications.insert(
-            new_id,
-            Notification {
-                app_name: app_name.to_string(),
-                summary: summary.to_string(),
-                expire_timeout,
-                timer: 0,
-            },
-        );
+        let mut notifications = self.notifications.write().await;
 
-        dbg!(&self.notifications);
+        if let Some(index) = notifications
+            .iter()
+            .position(|(notif_id, _)| notif_id == &new_id)
+        {
+            notifications[index] = (
+                new_id,
+                Notification {
+                    app_name: app_name.to_string(),
+                    summary: summary.to_string(),
+                    expire_timeout,
+                    timer: 0,
+                },
+            );
+        } else {
+            notifications.push((
+                new_id,
+                Notification {
+                    app_name: app_name.to_string(),
+                    summary: summary.to_string(),
+                    expire_timeout,
+                    timer: 0,
+                },
+            ));
+        }
+
+        // dbg!(&self.notifications);
 
         new_id
     }
