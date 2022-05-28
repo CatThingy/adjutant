@@ -7,7 +7,7 @@ use zbus::dbus_interface;
 pub struct Notification {
     pub app_name: String,
     pub summary: String,
-    pub expire_timeout: i32,
+    pub expire_timeout: Option<u32>,
     pub timer: u32,
 }
 
@@ -81,6 +81,12 @@ impl NotificationHandler {
             replaces_id
         };
 
+        let timeout = if expire_timeout <= 0 {
+            None
+        } else {
+            Some(expire_timeout.try_into().unwrap())
+        };
+
         let mut notifications = self.notifications.write().await;
 
         if let Some(index) = notifications
@@ -92,7 +98,7 @@ impl NotificationHandler {
                 Notification {
                     app_name: app_name.to_string(),
                     summary: summary.to_string(),
-                    expire_timeout,
+                    expire_timeout: timeout,
                     timer: 0,
                 },
             );
@@ -102,7 +108,7 @@ impl NotificationHandler {
                 Notification {
                     app_name: app_name.to_string(),
                     summary: summary.to_string(),
-                    expire_timeout,
+                    expire_timeout: timeout,
                     timer: 0,
                 },
             ));
