@@ -1,67 +1,49 @@
-use std::time::Instant;
+use async_std::sync::{Arc, RwLock};
 
-use async_std::sync::{Arc, RwLock, RwLockUpgradableReadGuard};
-
-use crate::notifications::Notification;
+use crate::notifications::Notifications;
 
 pub struct Printer {
-    current: Option<usize>,
-    notifications: Arc<RwLock<Vec<(u32, Notification)>>>,
+    current: Arc<RwLock<Option<u32>>>,
+    notifications: Notifications,
 }
 
 impl Printer {
-    pub fn new(notifications: Arc<RwLock<Vec<(u32, Notification)>>>) -> Self {
+    pub fn new(notifications: Notifications, current: Arc<RwLock<Option<u32>>>) -> Self {
         Printer {
-            current: None,
+            current,
             notifications,
         }
     }
-    pub async fn update(&mut self, now: Instant) {
-        let notifications = self.notifications.upgradable_read().await;
+    pub async fn print(&mut self) {
+        let notifications = self.notifications.read().await;
+
+        let mut current = self.current.write().await;
         if notifications.len() > 0 {
-            if let Some(index) = self.current {
-                self.current = Some((index + 1) % notifications.len());
+            if let Some(index) = *current {
+                // let index = index.min(notifications.len() as u32 - 1);
+                *current = Some((index + 1) % notifications.len() as u32);
             } else {
-                self.current = Some(0);
+                *current = Some(0);
             }
         } else {
-            self.current = None;
+            *current = None;
         }
 
-        if let Some(index) = self.current {
-            let (_, notification) = &notifications[index];
+        if let Some(index) = *current {
+            drop(current);
+            let (_, notification) = &notifications[index as usize];
 
-            println!(
-                "app_id|string|{}\nsummary|string|{}\nindex|int|{}\nlen|int|{}\nhas|bool|true\n\n",
-                notification.app_name,
-                notification.summary,
-                index + 1,
-                notifications.len()
-            );
+            println!("app_id|string|{}", notification.app_name,);
+            println!("summary|string|{}", notification.summary,);
+            println!("index|int|{}", index + 1,);
+            println!("len|int|{}\n", notifications.len());
+            println!("has|bool|true");
         } else {
+            drop(current);
             println!(
                 "app_id|string|{}\nsummary|string|{}\nindex|int|{}\nlen|int|{}\nhas|bool|false\n\n",
                 "", "", 0, 0
             )
-        }
-
-        let mut notifications = RwLockUpgradableReadGuard::upgrade(notifications).await;
-        let elapsed = now.elapsed().as_millis() as u32;
-
-        let mut removal_indices = vec![];
-
-        for (index, (_, n)) in notifications.iter_mut().enumerate().rev() {
-            if let Some(timeout) = n.expire_timeout {
-                n.timer += elapsed;
-
-                if n.timer > timeout {
-                    removal_indices.push(index);
-                }
-            }
-        }
-
-        for index in removal_indices.drain(..) {
-            notifications.remove(index);
         }
     }
 }

@@ -1,27 +1,32 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, time::Duration};
 
-use async_std::sync::{Arc, RwLock};
-use zbus::dbus_interface;
+use async_std::{
+    channel::Sender,
+    sync::{Arc, RwLock},
+};
+use zbus::{dbus_interface, SignalContext};
 
 #[derive(Debug, Clone)]
 pub struct Notification {
     pub app_name: String,
     pub summary: String,
-    pub expire_timeout: Option<u32>,
     pub timer: u32,
 }
 
-#[derive(Debug)]
+pub type Notifications = Arc<RwLock<Vec<(u32, Notification)>>>;
+
 pub struct NotificationHandler {
-    pub notifications: Arc<RwLock<Vec<(u32, Notification)>>>,
+    pub notifications: Notifications,
     pub next_id: u32,
+    pub tx: Sender<()>,
 }
 
 impl NotificationHandler {
-    pub fn new(notification: Arc<RwLock<Vec<(u32, Notification)>>>) -> NotificationHandler {
+    pub fn new(notifications: Notifications, tx: Sender<()>) -> NotificationHandler {
         NotificationHandler {
-            notifications: notification,
+            notifications,
             next_id: 1,
+            tx,
         }
     }
 }
@@ -29,13 +34,18 @@ impl NotificationHandler {
 #[dbus_interface(interface = "org.freedesktop.Notifications")]
 impl NotificationHandler {
     /// CloseNotification method
-    async fn close_notification(&mut self, id: u32) {
+    async fn close_notification(
+        &mut self,
+        id: u32,
+        #[zbus(signal_context)] ctxt: SignalContext<'_>,
+    ) {
         let mut notifications = self.notifications.write().await;
         if let Some(index) = notifications
             .iter()
             .position(|(notif_id, _)| notif_id == &id)
         {
             notifications.remove(index);
+            Self::notification_closed(&ctxt, id, 3).await.unwrap();
         }
     }
 
@@ -60,6 +70,7 @@ impl NotificationHandler {
         _actions: Vec<&str>,
         _hints: HashMap<&str, zbus::zvariant::Value<'_>>,
         expire_timeout: i32,
+        #[zbus(signal_context)] ctxt: SignalContext<'_>,
     ) -> u32 {
         dbg!(
             app_name,
@@ -81,12 +92,6 @@ impl NotificationHandler {
             replaces_id
         };
 
-        let timeout = if expire_timeout <= 0 {
-            None
-        } else {
-            Some(expire_timeout.try_into().unwrap())
-        };
-
         let mut notifications = self.notifications.write().await;
 
         if let Some(index) = notifications
@@ -98,7 +103,6 @@ impl NotificationHandler {
                 Notification {
                     app_name: app_name.to_string(),
                     summary: summary.to_string(),
-                    expire_timeout: timeout,
                     timer: 0,
                 },
             );
@@ -108,22 +112,55 @@ impl NotificationHandler {
                 Notification {
                     app_name: app_name.to_string(),
                     summary: summary.to_string(),
-                    expire_timeout: timeout,
                     timer: 0,
                 },
             ));
         }
 
-        // dbg!(&self.notifications);
+        let task_ctxt = ctxt.into_owned();
+        let task_notifications = self.notifications.clone();
+        let task_tx = self.tx.clone();
+
+        async_std::task::spawn(async move {
+            let timeout = if expire_timeout == -1 {
+                5000
+            } else if expire_timeout > 0 {
+                expire_timeout as u64
+            } else {
+                return;
+            };
+            async_std::task::sleep(Duration::from_millis(timeout)).await;
+            let mut notifications = task_notifications.write().await;
+            if let Some(index) = notifications
+                .iter()
+                .position(|(notif_id, _)| notif_id == &new_id)
+            {
+                notifications.remove(index);
+                Self::notification_closed(&task_ctxt, new_id, 3)
+                    .await
+                    .unwrap();
+                task_tx.send(()).await.unwrap();
+            }
+        });
+
+        self.tx.send(()).await.unwrap();
 
         new_id
     }
 
     // /// ActionInvoked signal
     // #[dbus_interface(signal)]
-    // async fn action_invoked(&self, id: u32, activation_token: &str) {}
+    // pub async fn action_invoked(
+    //     ctxt: &SignalContext<'_>,
+    //     id: u32,
+    //     activation_token: &str,
+    // ) -> Result<(), zbus::Error>;
 
-    // /// NotificationClosed signal
-    // #[dbus_interface(signal)]
-    // async fn notification_closed(&self, id: u32, reason: u32) {}
+    /// NotificationClosed signal
+    #[dbus_interface(signal)]
+    pub async fn notification_closed(
+        ctxt: &SignalContext<'_>,
+        id: u32,
+        reason: u32,
+    ) -> Result<(), zbus::Error>;
 }

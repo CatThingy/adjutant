@@ -1,42 +1,44 @@
-// use async_std::future::pending;
 mod adjutant;
 mod notifications;
 mod printer;
 
-use std::{error::Error, time::Duration};
+use std::error::Error;
 
-use async_std::sync::{Arc, RwLock};
-use printer::Printer;
+use async_std::{
+    channel,
+    sync::{Arc, RwLock},
+};
 use zbus::ConnectionBuilder;
 
-use notifications::{Notification, NotificationHandler};
-
-use crate::adjutant::Adjutant;
+use adjutant::Adjutant;
+use notifications::{NotificationHandler, Notifications};
+use printer::Printer;
 
 async fn main_() -> Result<(), Box<dyn Error>> {
-    let notifications = Arc::new(RwLock::new(Vec::<(u32, Notification)>::new()));
-    let handler = NotificationHandler::new(notifications.clone());
-    let mut printer = Printer::new(notifications);
-    let _ = ConnectionBuilder::session()?
+    let notifications = Notifications::default();
+    let current: Arc<RwLock<Option<u32>>> = Default::default();
+    let (tx, rx) = channel::unbounded::<()>();
+
+    let handler = NotificationHandler::new(notifications.clone(), tx.clone());
+    let adjutant = Adjutant::new(notifications.clone(), current.clone(), tx.clone());
+
+    let mut printer = Printer::new(notifications.clone(), current.clone());
+
+    let _notif_conn = ConnectionBuilder::session()?
         .name("org.freedesktop.Notifications")?
         .serve_at("/org/freedesktop/Notifications", handler)?
         .build()
         .await?;
 
-    let adjutant = Adjutant;
-
-    let _ = ConnectionBuilder::session()?
+    let _adj_conn = ConnectionBuilder::session()?
         .name("catthingy.Adjutant")?
         .serve_at("/catthingy/Adjutant", adjutant)?
         .build()
         .await?;
 
-    let mut now = std::time::Instant::now();
-
     loop {
-        printer.update(now).await;
-        now = std::time::Instant::now();
-        async_std::task::sleep(Duration::from_secs(1)).await;
+        rx.recv().await?;
+        printer.print().await;
     }
 }
 
