@@ -14,13 +14,13 @@ pub struct Notification {
 #[derive(Debug)]
 pub struct NotificationHandler {
     pub notifications: Arc<RwLock<Vec<(u32, Notification)>>>,
-    next_id: u32,
+    pub next_id: u32,
 }
 
 impl NotificationHandler {
-    pub fn new() -> NotificationHandler {
+    pub fn new(notification: Arc<RwLock<Vec<(u32, Notification)>>>) -> NotificationHandler {
         NotificationHandler {
-            notifications: Arc::new(RwLock::<Vec<(u32, Notification)>>::new(vec![])),
+            notifications: notification,
             next_id: 1,
         }
     }

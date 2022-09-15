@@ -6,5 +6,5 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-async-std = { version = "1.11.0", features = ["attributes"] }
+async-std = "1.11.0"
 zbus = "2.2.0"
