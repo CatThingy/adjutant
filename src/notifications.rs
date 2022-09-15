@@ -19,14 +19,20 @@ pub struct NotificationHandler {
     pub notifications: Notifications,
     pub next_id: u32,
     pub tx: Sender<()>,
+    current: Arc<RwLock<Option<usize>>>,
 }
 
 impl NotificationHandler {
-    pub fn new(notifications: Notifications, tx: Sender<()>) -> NotificationHandler {
+    pub fn new(
+        notifications: Notifications,
+        tx: Sender<()>,
+        current: Arc<RwLock<Option<usize>>>,
+    ) -> Self {
         NotificationHandler {
             notifications,
             next_id: 1,
             tx,
+            current,
         }
     }
 }
@@ -72,49 +78,74 @@ impl NotificationHandler {
         expire_timeout: i32,
         #[zbus(signal_context)] ctxt: SignalContext<'_>,
     ) -> u32 {
-        dbg!(
-            app_name,
-            replaces_id,
-            _app_icon,
-            summary,
-            _body,
-            _actions,
-            _hints,
-            expire_timeout
-        );
-
-        let new_id = if replaces_id == 0 {
-            let next_id = self.next_id;
-            self.next_id = u32::wrapping_add(next_id, 1);
-
-            next_id
-        } else {
-            replaces_id
-        };
+        // dbg!(
+        //     app_name,
+        //     replaces_id,
+        //     _app_icon,
+        //     summary,
+        //     _body,
+        //     _actions,
+        //     _hints,
+        //     expire_timeout
+        // );
 
         let mut notifications = self.notifications.write().await;
 
-        if let Some(index) = notifications
-            .iter()
-            .position(|(notif_id, _)| notif_id == &new_id)
-        {
-            notifications[index] = (
-                new_id,
-                Notification {
-                    app_name: app_name.to_string(),
-                    summary: summary.to_string(),
-                    timer: 0,
-                },
-            );
-        } else {
+        let update_current = async {
+            let mut current = self.current.write().await;
+            if let Some(index) = *current {
+                if index == &notifications.len() - 1 {
+                    *current = Some(index + 1);
+                }
+            } else {
+                *current = Some(0);
+            }
+        };
+
+        let new_id;
+        if replaces_id == 0 {
+            let next_id = self.next_id;
+            self.next_id = u32::wrapping_add(next_id, 1);
+
+            update_current.await;
+
             notifications.push((
-                new_id,
+                next_id,
                 Notification {
                     app_name: app_name.to_string(),
                     summary: summary.to_string(),
                     timer: 0,
                 },
             ));
+            new_id = next_id;
+        } else {
+            if let Some(index) = notifications
+                .iter()
+                .position(|(notif_id, _)| notif_id == &replaces_id)
+            {
+                drop(update_current);
+
+                notifications[index] = (
+                    replaces_id,
+                    Notification {
+                        app_name: app_name.to_string(),
+                        summary: summary.to_string(),
+                        timer: 0,
+                    },
+                );
+            } else {
+                update_current.await;
+
+                notifications.push((
+                    replaces_id,
+                    Notification {
+                        app_name: app_name.to_string(),
+                        summary: summary.to_string(),
+                        timer: 0,
+                    },
+                ));
+            }
+            new_id = replaces_id;
         }
 
         let task_ctxt = ctxt.into_owned();
