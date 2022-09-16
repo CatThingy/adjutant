@@ -45,8 +45,6 @@ impl Adjutant<'static> {
                 let mut current = RwLockUpgradableReadGuard::upgrade(current).await;
                 *current = None;
             } else if index >= notifications.len() {
-                dbg!(index);
-                dbg!(notifications.len());
                 let mut current = RwLockUpgradableReadGuard::upgrade(current).await;
                 *current = Some(notifications.len() - 1);
             }

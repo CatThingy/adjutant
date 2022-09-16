@@ -2,7 +2,7 @@ use std::{collections::HashMap, time::Duration};
 
 use async_std::{
     channel::Sender,
-    sync::{Arc, RwLock},
+    sync::{Arc, RwLock, RwLockUpgradableReadGuard},
 };
 use zbus::{dbus_interface, SignalContext};
 
@@ -150,6 +150,7 @@ impl NotificationHandler {
 
         let task_ctxt = ctxt.into_owned();
         let task_notifications = self.notifications.clone();
+        let task_current = self.current.clone();
         let task_tx = self.tx.clone();
 
         async_std::task::spawn(async move {
@@ -166,10 +167,22 @@ impl NotificationHandler {
                 .iter()
                 .position(|(notif_id, _)| notif_id == &new_id)
             {
+                let current = task_current.upgradable_read().await;
+
                 notifications.remove(index);
+
                 Self::notification_closed(&task_ctxt, new_id, 3)
                     .await
                     .unwrap();
+
+                if notifications.len() == 0 {
+                    let mut current = RwLockUpgradableReadGuard::upgrade(current).await;
+                    *current = None;
+                } else if index >= notifications.len() || current.unwrap() > index {
+                    let mut current = RwLockUpgradableReadGuard::upgrade(current).await;
+                    *current = Some(notifications.len() - 1);
+                }
+
                 task_tx.send(()).await.unwrap();
             }
         });
