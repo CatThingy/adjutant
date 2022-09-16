@@ -12,12 +12,12 @@ use zbus::{ConnectionBuilder, SignalContext};
 
 use adjutant::Adjutant;
 use notifications::{NotificationHandler, Notifications};
-use printer::Printer;
+use printer::{Printer, Print};
 
 async fn main_() -> Result<(), Box<dyn Error>> {
     let notifications = Notifications::default();
     let current: Arc<RwLock<Option<usize>>> = Default::default();
-    let (tx, rx) = channel::unbounded::<()>();
+    let (tx, rx) = channel::unbounded::<Print>();
 
     let handler = NotificationHandler::new(notifications.clone(), tx.clone(), current.clone());
     let notif_conn = ConnectionBuilder::session()?

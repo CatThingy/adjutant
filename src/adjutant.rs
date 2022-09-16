@@ -4,12 +4,12 @@ use async_std::{
 };
 use zbus::{dbus_interface, SignalContext};
 
-use crate::notifications::{NotificationHandler, Notifications};
+use crate::{notifications::{NotificationHandler, Notifications}, printer::Print};
 
 pub struct Adjutant<'a> {
     notifications: Notifications,
     current: Arc<RwLock<Option<usize>>>,
-    tx: Sender<()>,
+    tx: Sender<Print>,
     notification_signal_ctx: SignalContext<'a>,
 }
 
@@ -17,7 +17,7 @@ impl<'a> Adjutant<'a> {
     pub fn new(
         notifications: Notifications,
         current: Arc<RwLock<Option<usize>>>,
-        tx: Sender<()>,
+        tx: Sender<Print>,
         notification_signal_ctx: SignalContext<'a>,
     ) -> Self {
         Adjutant {
@@ -49,12 +49,8 @@ impl Adjutant<'static> {
                 *current = Some(notifications.len() - 1);
             }
 
-            self.tx.send(()).await.unwrap();
+            self.tx.send(Print).await.unwrap();
         }
-    }
-
-    async fn expand_current(&self) {
-        self.tx.send(()).await.unwrap();
     }
 
     async fn next(&self) {
@@ -62,7 +58,7 @@ impl Adjutant<'static> {
         if let Some(index) = *current {
             let notifications = self.notifications.read().await;
             *current = Some((index + 1) % notifications.len());
-            self.tx.send(()).await.unwrap();
+            self.tx.send(Print).await.unwrap();
         }
     }
 
@@ -74,7 +70,7 @@ impl Adjutant<'static> {
                 index = notifications.len();
             }
             *current = Some(index - 1);
-            self.tx.send(()).await.unwrap();
+            self.tx.send(Print).await.unwrap();
         }
     }
 }

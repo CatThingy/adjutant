@@ -2,6 +2,8 @@ use async_std::sync::{Arc, RwLock};
 
 use crate::notifications::Notifications;
 
+pub struct Print;
+
 pub struct Printer {
     current: Arc<RwLock<Option<usize>>>,
     notifications: Notifications,
@@ -23,17 +25,20 @@ impl Printer {
             drop(current);
             let (_, notification) = &notifications[index];
 
-            println!("app_id|string|{}", notification.app_name,);
-            println!("summary|string|{}", notification.summary,);
-            println!("index|int|{}", index + 1,);
-            println!("len|int|{}\n", notifications.len());
-            println!("has|bool|true");
+            println!("app_id|string|{}", notification.app_name);
+            println!("summary|string|{}", notification.summary);
+            println!("body|string|{}", notification.body);
+            println!("index|int|{}", index + 1);
+            println!("len|int|{}", notifications.len());
+            println!("has|bool|true\n");
         } else {
             drop(current);
-            println!(
-                "app_id|string|{}\nsummary|string|{}\nindex|int|{}\nlen|int|{}\nhas|bool|false\n\n",
-                "", "", 0, 0
-            )
+            println!("app_id|string|");
+            println!("summary|string|");
+            println!("body|string|");
+            println!("index|int|0");
+            println!("len|int|0");
+            println!("has|bool|false\n");
         }
     }
 }

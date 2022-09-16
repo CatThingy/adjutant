@@ -4,13 +4,23 @@ use async_std::{
     channel::Sender,
     sync::{Arc, RwLock, RwLockUpgradableReadGuard},
 };
+use lazy_static::lazy_static;
+use regex::Regex;
 use zbus::{dbus_interface, SignalContext};
+
+use crate::printer::Print;
+
+lazy_static! {
+    static ref MARKUP: Regex =
+        Regex::new(r#"(?:</?[biu]>)|(?:<a href=".*?">)|(?:</a>)|(?:<img src=".*" alt=".*">)"#)
+            .unwrap();
+}
 
 #[derive(Debug, Clone)]
 pub struct Notification {
     pub app_name: String,
     pub summary: String,
-    pub timer: u32,
+    pub body: String,
 }
 
 pub type Notifications = Arc<RwLock<Vec<(u32, Notification)>>>;
@@ -18,14 +28,14 @@ pub type Notifications = Arc<RwLock<Vec<(u32, Notification)>>>;
 pub struct NotificationHandler {
     pub notifications: Notifications,
     pub next_id: u32,
-    pub tx: Sender<()>,
+    pub tx: Sender<Print>,
     current: Arc<RwLock<Option<usize>>>,
 }
 
 impl NotificationHandler {
     pub fn new(
         notifications: Notifications,
-        tx: Sender<()>,
+        tx: Sender<Print>,
         current: Arc<RwLock<Option<usize>>>,
     ) -> Self {
         NotificationHandler {
@@ -72,7 +82,7 @@ impl NotificationHandler {
         replaces_id: u32,
         _app_icon: &str,
         summary: &str,
-        _body: &str,
+        body: &str,
         _actions: Vec<&str>,
         _hints: HashMap<&str, zbus::zvariant::Value<'_>>,
         expire_timeout: i32,
@@ -88,6 +98,8 @@ impl NotificationHandler {
         //     _hints,
         //     expire_timeout
         // );
+
+        let body = MARKUP.replace(body, "");
 
         let mut notifications = self.notifications.write().await;
 
@@ -114,7 +126,7 @@ impl NotificationHandler {
                 Notification {
                     app_name: app_name.to_string(),
                     summary: summary.to_string(),
-                    timer: 0,
+                    body: body.to_string(),
                 },
             ));
             new_id = next_id;
@@ -130,7 +142,7 @@ impl NotificationHandler {
                     Notification {
                         app_name: app_name.to_string(),
                         summary: summary.to_string(),
-                        timer: 0,
+                        body: body.to_string(),
                     },
                 );
             } else {
@@ -141,7 +153,7 @@ impl NotificationHandler {
                     Notification {
                         app_name: app_name.to_string(),
                         summary: summary.to_string(),
-                        timer: 0,
+                        body: body.to_string(),
                     },
                 ));
             }
@@ -183,11 +195,11 @@ impl NotificationHandler {
                     *current = Some(notifications.len() - 1);
                 }
 
-                task_tx.send(()).await.unwrap();
+                task_tx.send(Print).await.unwrap();
             }
         });
 
-        self.tx.send(()).await.unwrap();
+        self.tx.send(Print).await.unwrap();
 
         new_id
     }
