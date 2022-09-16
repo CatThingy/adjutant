@@ -12,7 +12,7 @@ use zbus::{ConnectionBuilder, SignalContext};
 
 use adjutant::Adjutant;
 use notifications::{NotificationHandler, Notifications};
-use printer::{Printer, Print};
+use printer::{Print, Printer};
 
 async fn main_() -> Result<(), Box<dyn Error>> {
     let notifications = Notifications::default();

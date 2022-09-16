@@ -4,7 +4,10 @@ use async_std::{
 };
 use zbus::{dbus_interface, SignalContext};
 
-use crate::{notifications::{NotificationHandler, Notifications}, printer::Print};
+use crate::{
+    notifications::{NotificationHandler, Notifications},
+    printer::Print,
+};
 
 pub struct Adjutant<'a> {
     notifications: Notifications,
