@@ -72,7 +72,7 @@ impl NotificationHandler {
 
     /// GetServerInformation method
     async fn get_server_information(&self) -> (&str, &str, &str, &str) {
-        ("notext", "CatThingy", "0.1.0", "1.2")
+        ("adjutant", "CatThingy", "0.1.0", "1.2")
     }
 
     /// Notify method
@@ -88,17 +88,6 @@ impl NotificationHandler {
         expire_timeout: i32,
         #[zbus(signal_context)] ctxt: SignalContext<'_>,
     ) -> u32 {
-        // dbg!(
-        //     app_name,
-        //     replaces_id,
-        //     _app_icon,
-        //     summary,
-        //     _body,
-        //     _actions,
-        //     _hints,
-        //     expire_timeout
-        // );
-
         let body = MARKUP.replace(body, "");
 
         let mut notifications = self.notifications.write().await;
@@ -203,14 +192,6 @@ impl NotificationHandler {
 
         new_id
     }
-
-    // /// ActionInvoked signal
-    // #[dbus_interface(signal)]
-    // pub async fn action_invoked(
-    //     ctxt: &SignalContext<'_>,
-    //     id: u32,
-    //     activation_token: &str,
-    // ) -> Result<(), zbus::Error>;
 
     /// NotificationClosed signal
     #[dbus_interface(signal)]

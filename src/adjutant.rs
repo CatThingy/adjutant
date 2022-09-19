@@ -39,7 +39,7 @@ impl Adjutant<'static> {
         if let Some(index) = *current {
             let mut notifications = self.notifications.write().await;
 
-            let id = notifications.remove(index as usize).0;
+            let id = notifications.remove(index).0;
             NotificationHandler::notification_closed(&self.notification_signal_ctx, id, 2)
                 .await
                 .unwrap();
