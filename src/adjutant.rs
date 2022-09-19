@@ -76,4 +76,15 @@ impl Adjutant<'static> {
             self.tx.send(Print).await.unwrap();
         }
     }
+
+    async fn invoke(&self) {
+        let current = self.current.read().await;
+        if let Some(index) = *current {
+            let notifications = self.notifications.read().await;
+            let (notif_id, _) = notifications[index];
+            NotificationHandler::action_invoked(&self.notification_signal_ctx, notif_id, "default")
+                .await
+                .unwrap();
+        }
+    }
 }

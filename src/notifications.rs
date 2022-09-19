@@ -14,6 +14,8 @@ lazy_static! {
     static ref MARKUP: Regex =
         Regex::new(r#"(?:</?[biu]>)|(?:<a href=".*?">)|(?:</a>)|(?:<img src=".*" alt=".*">)"#)
             .unwrap();
+    static ref CHROMIUM_NOTIF_HEADER: Regex = Regex::new("^.*?\n\n").unwrap();
+    static ref NEWLINES: Regex = Regex::new("\n+").unwrap();
 }
 
 #[derive(Debug, Clone)]
@@ -62,12 +64,25 @@ impl NotificationHandler {
         {
             notifications.remove(index);
             Self::notification_closed(&ctxt, id, 3).await.unwrap();
+
+            let current = self.current.upgradable_read().await;
+            if let Some(curr_index) = *current {
+                if notifications.len() == 0 {
+                    let mut current = RwLockUpgradableReadGuard::upgrade(current).await;
+                    *current = None;
+                } else if curr_index >= index {
+                    let mut current = RwLockUpgradableReadGuard::upgrade(current).await;
+                    *current = Some(notifications.len() - 1);
+                }
+            }
+
+            self.tx.send(Print).await.unwrap();
         }
     }
 
     /// GetCapabilities method
-    async fn get_capabilities(&self) -> Vec<String> {
-        vec![]
+    async fn get_capabilities(&self) -> Vec<&str> {
+        vec!["actions", "body"]
     }
 
     /// GetServerInformation method
@@ -88,14 +103,21 @@ impl NotificationHandler {
         expire_timeout: i32,
         #[zbus(signal_context)] ctxt: SignalContext<'_>,
     ) -> u32 {
-        let body = MARKUP.replace(body, "");
+        let mut body = MARKUP.replace_all(body, "").into_owned();
+
+        if app_name == "Chromium" {
+            let result = CHROMIUM_NOTIF_HEADER.replace(&body, "");
+            body = result.into_owned();
+        }
+
+        body = NEWLINES.replace_all(&body, "").into_owned();
 
         let mut notifications = self.notifications.write().await;
 
         let update_current = async {
             let mut current = self.current.write().await;
             if let Some(index) = *current {
-                if index == &notifications.len() - 1 {
+                if notifications.len() > 0 && index == &notifications.len() - 1 {
                     *current = Some(index + 1);
                 }
             } else {
@@ -192,6 +214,13 @@ impl NotificationHandler {
 
         new_id
     }
+    /// ActionInvoked signal
+    #[dbus_interface(signal)]
+    pub async fn action_invoked(
+        ctxt: &SignalContext<'_>,
+        id: u32,
+        action_key: &str,
+    ) -> Result<(), zbus::Error>;
 
     /// NotificationClosed signal
     #[dbus_interface(signal)]
