@@ -177,9 +177,7 @@ impl NotificationHandler {
         let task_tx = self.tx.clone();
 
         async_std::task::spawn(async move {
-            let timeout = if expire_timeout == -1 {
-                5000
-            } else if expire_timeout > 0 {
+            let timeout = if expire_timeout > 0 {
                 expire_timeout as u64
             } else {
                 return;
