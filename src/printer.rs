@@ -1,4 +1,5 @@
 use async_std::sync::{Arc, RwLock};
+use unicode_segmentation::UnicodeSegmentation;
 
 use crate::notifications::Notifications;
 
@@ -25,9 +26,9 @@ impl Printer {
             drop(current);
             let (_, notification) = &notifications[index];
 
-            println!("app_id|string|{}", notification.app_name);
-            println!("summary|string|{}", notification.summary);
-            println!("body|string|{}", notification.body);
+            println!("app_id|string|{}", limit_graphemes(&notification.app_name, 400));
+            println!("summary|string|{}", limit_graphemes(&notification.summary, 400));
+            println!("body|string|{}", limit_graphemes(&notification.body, 400));
             println!("index|int|{}", index + 1);
             println!("len|int|{}", notifications.len());
             println!("has|bool|true\n");
@@ -40,5 +41,12 @@ impl Printer {
             println!("len|int|0");
             println!("has|bool|false\n");
         }
+    }
+}
+
+fn limit_graphemes(string: &str, length: usize) -> &str {
+    match string.grapheme_indices(true).nth(length) {
+        None => string,
+        Some((idx, _)) => &string[..idx],
     }
 }
